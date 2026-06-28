@@ -1,9 +1,11 @@
 import type { DiffScopeItem } from "../../diff-scope/diffScopes.js";
 import type { GitDiffSnapshot } from "../../git-diff/getGitDiffStats.js";
 import type { MenuItem } from "../../main-menu/menuItems.js";
-import type { AgentFixResult } from "../fixAgent.js";
-import type { AgentReviewResult } from "../reviewAgent.js";
 import { toDiffContextLines, toMarkdownBlockLines } from "./sharedPrompt.js";
+
+type PromptAgentOutput = {
+  readonly content: string;
+};
 
 export const LINT_AGENT_INSTRUCTIONS = [
   "You are a lint and verification agent running inside the rp CLI after review and optional fixing.",
@@ -25,8 +27,8 @@ export function toLintPrompt(
   mode: MenuItem,
   diffScope: DiffScopeItem,
   diff: GitDiffSnapshot,
-  review: AgentReviewResult | undefined,
-  fix: AgentFixResult | undefined,
+  review: PromptAgentOutput | undefined,
+  fix: PromptAgentOutput | undefined,
   fixSkipped: boolean,
 ): string {
   return [
@@ -42,14 +44,14 @@ export function toLintPrompt(
     ...toMarkdownBlockLines(
       "Review output:",
       "markdown",
-      review?.output,
+      review?.content,
       "(no review output)",
     ),
     "",
     ...toMarkdownBlockLines(
       "Fix output:",
       "markdown",
-      fix?.output,
+      fix?.content,
       "(no fix output)",
     ),
     "",

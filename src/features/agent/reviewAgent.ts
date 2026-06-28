@@ -6,9 +6,11 @@ import { AGENT_MAX_TURNS, createCompletionModel } from "./model.js";
 import { REVIEW_AGENT_INSTRUCTIONS, toReviewPrompt } from "./prompt.js";
 import { PtySessionManager } from "./ptySessionManager.js";
 import { createAgentTools } from "./tools.js";
+import { generateVerdicts, type ReviewVerdicts } from "./verdicts.js";
 
 export type AgentReviewResult = {
-  readonly output: string;
+  readonly content: string;
+  readonly verdicts: ReviewVerdicts;
 };
 
 type RunReviewAgentOptions = {
@@ -35,9 +37,11 @@ export async function runReviewAgent({
       .build();
 
     const response = await agent.prompt(toReviewPrompt(mode, diffScope, diff)).send();
+    const verdicts = await generateVerdicts("review", response.output);
 
     return {
-      output: response.output,
+      content: response.output,
+      verdicts,
     };
   } finally {
     ptySessions.dispose();

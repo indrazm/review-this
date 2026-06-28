@@ -278,7 +278,7 @@ function shouldRunFix(
     return false;
   }
 
-  return getReviewVerdict(review) !== "pass";
+  return review.verdicts.verdict !== "pass";
 }
 
 function shouldSkipFix(
@@ -317,17 +317,17 @@ function getPrRunDecision(
     };
   }
 
-  const lintVerdict = getLintVerdict(lint);
+  const lintVerdict = lint.verdicts.verdict;
   if (lintVerdict !== "pass") {
     return {
-      skipReason: `lint verdict is ${lintVerdict ?? "missing"}`,
+      skipReason: `lint verdict is ${lintVerdict}`,
       willRun: false,
     };
   }
 
-  const reviewVerdict = review === undefined ? undefined : getReviewVerdict(review);
+  const reviewVerdict = review?.verdicts.verdict;
   if (reviewVerdict !== undefined && reviewVerdict !== "pass") {
-    const fixVerdict = getFixVerdict(fix);
+    const fixVerdict = fix?.verdicts.verdict;
 
     if (fixVerdict !== "fixed") {
       return {
@@ -338,51 +338,4 @@ function getPrRunDecision(
   }
 
   return { willRun: true };
-}
-
-function getReviewVerdict(
-  review: AgentReviewResult,
-): "pass" | "needs changes" | undefined {
-  const verdictsSection = getMarkdownSection(review.output, "Verdicts");
-  const verdictMatch = verdictsSection.match(
-    /(^|\n)\s*-?\s*\*\*Verdict:\*\*\s*(pass|needs changes)\s*($|\n)/i,
-  );
-
-  return verdictMatch?.[2]?.toLowerCase() as
-    | "pass"
-    | "needs changes"
-    | undefined;
-}
-
-function getLintVerdict(
-  lint: AgentLintResult,
-): "pass" | "fail" | undefined {
-  const verdictMatch = lint.output.match(
-    /(^|\n)\s*VERDICT:\s*(pass|fail)\s*($|\n)/i,
-  );
-
-  return verdictMatch?.[2]?.toLowerCase() as "pass" | "fail" | undefined;
-}
-
-function getFixVerdict(
-  fix: AgentFixResult | undefined,
-): "fixed" | "not-fixed" | "no-op" | undefined {
-  const verdictMatch = fix?.output.match(
-    /(^|\n)\s*FIX_VERDICT:\s*(fixed|not-fixed|no-op)\s*($|\n)/i,
-  );
-
-  return verdictMatch?.[2]?.toLowerCase() as
-    | "fixed"
-    | "not-fixed"
-    | "no-op"
-    | undefined;
-}
-
-function getMarkdownSection(markdown: string, heading: string): string {
-  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = markdown.match(
-    new RegExp(`(^|\\n)##\\s+${escapedHeading}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "i"),
-  );
-
-  return match?.[2] ?? "";
 }

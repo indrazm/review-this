@@ -1,13 +1,16 @@
 import type { DiffScopeItem } from "../../diff-scope/diffScopes.js";
 import type { GitDiffSnapshot } from "../../git-diff/getGitDiffStats.js";
 import type { MenuItem } from "../../main-menu/menuItems.js";
-import type { AgentReviewResult } from "../reviewAgent.js";
 import { extractChangedFilePaths } from "../diffFilePaths.js";
 import {
   toDiffContextLines,
   toFileListLines,
   toMarkdownBlockLines,
 } from "./sharedPrompt.js";
+
+type PromptAgentOutput = {
+  readonly content: string;
+};
 
 export const FIX_AGENT_INSTRUCTIONS = [
   "You are a fixing agent running inside the rp CLI after a review agent.",
@@ -33,7 +36,7 @@ export function toFixPrompt(
   mode: MenuItem,
   diffScope: DiffScopeItem,
   diff: GitDiffSnapshot,
-  review: AgentReviewResult,
+  review: PromptAgentOutput,
 ): string {
   const allowedFiles = extractChangedFilePaths(diff.patch);
 
@@ -61,7 +64,7 @@ export function toFixPrompt(
     ...toMarkdownBlockLines(
       "Review output:",
       "markdown",
-      review.output,
+      review.content,
       "(empty review output)",
     ),
     "",

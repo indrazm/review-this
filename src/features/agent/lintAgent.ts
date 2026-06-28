@@ -8,9 +8,11 @@ import { LINT_AGENT_INSTRUCTIONS, toLintPrompt } from "./prompt.js";
 import type { AgentReviewResult } from "./reviewAgent.js";
 import { PtySessionManager } from "./ptySessionManager.js";
 import { createAgentTools } from "./tools.js";
+import { generateVerdicts, type LintVerdicts } from "./verdicts.js";
 
 export type AgentLintResult = {
-  readonly output: string;
+  readonly content: string;
+  readonly verdicts: LintVerdicts;
 };
 
 type RunLintAgentOptions = {
@@ -45,9 +47,11 @@ export async function runLintAgent({
     const response = await agent
       .prompt(toLintPrompt(mode, diffScope, diff, review, fix, fixSkipped))
       .send();
+    const verdicts = await generateVerdicts("lint", response.output);
 
     return {
-      output: response.output,
+      content: response.output,
+      verdicts,
     };
   } finally {
     ptySessions.dispose();

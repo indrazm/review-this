@@ -1,15 +1,19 @@
 import type { DiffScopeItem } from "../../diff-scope/diffScopes.js";
 import type { GitDiffSnapshot } from "../../git-diff/getGitDiffStats.js";
 import type { MenuItem } from "../../main-menu/menuItems.js";
-import type { AgentFixResult } from "../fixAgent.js";
-import type { AgentLintResult } from "../lintAgent.js";
-import type { AgentReviewResult } from "../reviewAgent.js";
 import { toDiffContextLines, toMarkdownBlockLines } from "./sharedPrompt.js";
+
+type PromptAgentOutput = {
+  readonly content: string;
+  readonly verdicts?: {
+    readonly verdict: string;
+  };
+};
 
 export const PR_AGENT_INSTRUCTIONS = [
   "You are a PR agent running inside the rp CLI after review, optional fixing, and lint verification.",
   "Your job is to create a pull request when the lint agent says the project is ready.",
-  "Only proceed when the lint output contains `VERDICT: pass` and the fix output does not report unresolved review findings.",
+  "Only proceed when the parsed lint verdict is `pass` and parsed fix/review verdicts do not report unresolved review findings.",
   "Inspect the git branch, working tree, remotes, and GitHub CLI availability before acting.",
   "Do not include `.env`, secrets, credentials, or ignored files in commits.",
   "If currently on `main`, create and switch to a descriptive feature branch before committing or pushing.",
@@ -28,15 +32,15 @@ export function toPrPrompt(
   mode: MenuItem,
   diffScope: DiffScopeItem,
   diff: GitDiffSnapshot,
-  review: AgentReviewResult | undefined,
-  fix: AgentFixResult | undefined,
-  lint: AgentLintResult,
+  review: PromptAgentOutput | undefined,
+  fix: PromptAgentOutput | undefined,
+  lint: PromptAgentOutput,
 ): string {
   return [
     ...toDiffContextLines(mode, diffScope, diff),
     "",
     "PR workflow:",
-    "1. Confirm lint verdict is pass.",
+    "1. Confirm parsed lint verdict is pass.",
     "2. Inspect `git status --short --branch`, `git remote -v`, and GitHub CLI auth state.",
     "3. Create/switch to a feature branch if needed.",
     "4. Commit relevant changes if needed.",
@@ -49,24 +53,29 @@ export function toPrPrompt(
     "- Do not paste the original git diff into the PR description.",
     "- If a section has no source output, say so plainly instead of inventing content.",
     "",
+    "Parsed verdicts:",
+    `- Review: ${review?.verdicts?.verdict ?? "missing"}`,
+    `- Fix: ${fix?.verdicts?.verdict ?? (fix === undefined ? "not run" : "missing")}`,
+    `- Lint: ${lint.verdicts?.verdict ?? "missing"}`,
+    "",
     ...toMarkdownBlockLines(
       "Review output:",
       "markdown",
-      review?.output,
+      review?.content,
       "(no review output)",
     ),
     "",
     ...toMarkdownBlockLines(
       "Fix output:",
       "markdown",
-      fix?.output,
+      fix?.content,
       "(no fix output)",
     ),
     "",
     ...toMarkdownBlockLines(
       "Lint output:",
       "markdown",
-      lint.output,
+      lint.content,
       "(empty lint output)",
     ),
     "",
