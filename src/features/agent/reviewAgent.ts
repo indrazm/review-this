@@ -29,8 +29,8 @@ export async function runReviewAgent({
   const ptySessions = new PtySessionManager(cwd);
 
   try {
-    const agent = new AgentBuilder("review-pipeline-reviewer", createCompletionModel())
-      .name("Review Pipeline Reviewer")
+    const agent = new AgentBuilder("review-this-reviewer", createCompletionModel())
+      .name("Review This Reviewer")
       .instructions(REVIEW_AGENT_INSTRUCTIONS)
       .tools(createAgentTools(ptySessions))
       .defaultMaxTurns(AGENT_MAX_TURNS)

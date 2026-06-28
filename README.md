@@ -1,14 +1,30 @@
-# review-pipeline
+# review-this
 
-`review-pipeline` is a local terminal UI for running review workflows from the
-current project directory. The CLI is installed as `rp`.
+`review-this` is a local terminal UI for running review workflows from the
+current project directory. The CLI is installed as `review-this`.
 
 The app is built with pnpm, TypeScript, React, Ink, Anvia, Lexa-aware review
 instructions, and node-pty.
 
+## Why I Built This
+
+I built `review-this` because human review is becoming the bottleneck in
+agentic coding. Agents can write, revise, and verify changes quickly, but a
+human still gets pulled into the loop too early when the work is not actually
+ready to review.
+
+This tool pushes that loop back to the agents. It starts from the current git
+diff, asks an agent to review the change, runs project verification, applies
+focused fixes when needed, and prepares a PR only after the automated pipeline
+is satisfied.
+
+The goal is for me to review once: when the PR is ready. Human attention should
+go to the final decision, product judgment, and deeper engineering tradeoffs,
+not to repeatedly catching issues an agent could have found and fixed locally.
+
 ## Current Behavior
 
-When you run `rp`, it opens a full-screen terminal app with three modes:
+When you run `review-this`, it opens a full-screen terminal app with three modes:
 
 - Review
 - Review and Fix
@@ -22,18 +38,21 @@ After choosing a mode, choose the diff scope:
 
 Selecting a scope opens a pipeline screen. The current pipeline implementation:
 
-1. Loads the selected git diff scope for the directory where `rp` was started.
+1. Loads the selected git diff scope for the directory where `review-this` was
+   started.
 2. Shows a `Loading Diff` state.
 3. Skips review when the selected scope has no changes.
 4. Passes non-empty git diffs to the review agent.
 5. Instructs the agent to use Lexa for codebase context when available.
 6. Shows a `Reviewing ...` state while the agent runs.
 7. Shows raw review output for the `Review` mode.
-8. Runs a fixing agent for `Review and Fix` and `Full pipeline` when review
-   findings need fixes.
-9. Runs lint, typecheck, tests, and build through a lint agent for
+8. Runs lint, typecheck, tests, and build through a lint agent for
    `Full pipeline`.
-10. Runs a PR agent for `Full pipeline` when lint verification passes.
+9. Runs a fixing agent for `Review and Fix` when review findings need fixes,
+   and for `Full pipeline` after lint when review or verification findings need
+   fixes.
+10. Runs a PR agent for `Full pipeline` when review, lint, and fix verdicts
+   allow it.
 11. Gives agents two PTY tools: `execCommand` and `writeStdin`.
 12. Marks the run as `Completed.`
 
@@ -69,9 +88,9 @@ Install dependencies and link the CLI globally:
 ./install.sh
 ```
 
-The installer runs `pnpm install`, builds the app, and symlinks `rp` into a user
-bin directory. It prefers `~/.local/bin` or `~/bin` when either directory is on
-your `PATH`.
+The installer runs `pnpm install`, builds the app, and symlinks `review-this`
+into a user bin directory. It prefers `~/.local/bin` or `~/bin` when either
+directory is on your `PATH`.
 
 To choose the install location:
 
@@ -82,7 +101,7 @@ INSTALL_BIN_DIR="$HOME/bin" ./install.sh
 Then run:
 
 ```sh
-rp
+review-this
 ```
 
 ## Development

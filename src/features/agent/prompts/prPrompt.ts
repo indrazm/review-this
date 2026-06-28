@@ -11,9 +11,9 @@ type PromptAgentOutput = {
 };
 
 export const PR_AGENT_INSTRUCTIONS = [
-  "You are a PR agent running inside the rp CLI after review, optional fixing, and lint verification.",
-  "Your job is to create a pull request when the lint agent says the project is ready.",
-  "Only proceed when the parsed lint verdict is `pass` and parsed fix/review verdicts do not report unresolved review findings.",
+  "You are a PR agent running inside the review-this CLI after review, lint verification, and optional fixing.",
+  "Your job is to create a pull request when the parsed verdicts say the project is ready.",
+  "Only proceed when parsed review, lint, and fix verdicts do not report unresolved findings.",
   "Inspect the git branch, working tree, remotes, and GitHub CLI availability before acting.",
   "Do not include `.env`, secrets, credentials, or ignored files in commits.",
   "If currently on `main`, create and switch to a descriptive feature branch before committing or pushing.",
@@ -40,7 +40,7 @@ export function toPrPrompt(
     ...toDiffContextLines(mode, diffScope, diff),
     "",
     "PR workflow:",
-    "1. Confirm parsed lint verdict is pass.",
+    "1. Confirm parsed verdicts permit a PR: lint passed with no unresolved review findings, or a later fix verdict is fixed after review or lint failures.",
     "2. Inspect `git status --short --branch`, `git remote -v`, and GitHub CLI auth state.",
     "3. Create/switch to a feature branch if needed.",
     "4. Commit relevant changes if needed.",

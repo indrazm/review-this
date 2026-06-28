@@ -63,6 +63,9 @@ function PipelineSteps({
         isActive={state.status === "idle" || state.status === "loading-diff"}
         isDone={
           state.status === "reviewing" ||
+          state.status === "linting" ||
+          state.status === "fixing" ||
+          state.status === "preparing-pr" ||
           state.status === "completed" ||
           state.status === "failed"
         }
@@ -79,16 +82,26 @@ function PipelineSteps({
         isSkipped={state.status === "completed" && state.reviewSkipped}
         label="Reviewing ..."
       />
+      {showsFullPipelineSteps && (
+        <StepLine
+          isActive={state.status === "linting"}
+          isDone={
+            state.status === "fixing" ||
+            state.status === "preparing-pr" ||
+            (state.status === "completed" && !state.lintSkipped)
+          }
+          isSkipped={state.status === "completed" && state.lintSkipped}
+          label="Linting ..."
+        />
+      )}
       {showsFixStep && (
         <StepLine
           isActive={state.status === "fixing"}
           isDone={
-            state.status === "linting" ||
             state.status === "preparing-pr" ||
             (state.status === "completed" && !state.fixSkipped)
           }
           isSkipped={
-            (state.status === "linting" && state.fixSkipped) ||
             (state.status === "preparing-pr" && state.fixSkipped) ||
             (state.status === "completed" && state.fixSkipped)
           }
@@ -96,23 +109,12 @@ function PipelineSteps({
         />
       )}
       {showsFullPipelineSteps && (
-        <>
-          <StepLine
-            isActive={state.status === "linting"}
-            isDone={
-              state.status === "preparing-pr" ||
-              (state.status === "completed" && !state.lintSkipped)
-            }
-            isSkipped={state.status === "completed" && state.lintSkipped}
-            label="Linting ..."
-          />
-          <StepLine
-            isActive={state.status === "preparing-pr"}
-            isDone={state.status === "completed" && !state.prSkipped}
-            isSkipped={state.status === "completed" && state.prSkipped}
-            label="Preparing PR ..."
-          />
-        </>
+        <StepLine
+          isActive={state.status === "preparing-pr"}
+          isDone={state.status === "completed" && !state.prSkipped}
+          isSkipped={state.status === "completed" && state.prSkipped}
+          label="Preparing PR ..."
+        />
       )}
       {state.status === "failed" && (
         <Text color="yellow" wrap="truncate">

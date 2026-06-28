@@ -18,6 +18,6 @@ export const PIPELINE_DEFINITIONS: Record<MenuItem["id"], PipelineDefinition> = 
   },
   "full-pipeline": {
     mode: "full-pipeline",
-    steps: ["git-diff", "review", "fix", "lint", "pr"],
+    steps: ["git-diff", "review", "lint", "fix", "pr"],
   },
 };

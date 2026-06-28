@@ -17,6 +17,7 @@ export type PipelineRunResult = {
   readonly gitDiff?: GitDiffSnapshot;
   readonly lintSkipped: boolean;
   readonly mode: MenuItem;
+  readonly prSkipReason?: string;
   readonly prSkipped: boolean;
   readonly reviewSkipped: boolean;
 };
@@ -34,16 +35,20 @@ type RunPipelineOptions = {
     diff: GitDiffSnapshot,
     fixWillRun: boolean,
   ) => void;
+  readonly onFixStarted: (
+    diff: GitDiffSnapshot,
+    review: AgentReviewResult,
+    lint: AgentLintResult | undefined,
+  ) => void;
   readonly onFixCompleted: (
     fix: AgentFixResult,
     diff: GitDiffSnapshot,
     review: AgentReviewResult,
+    lint: AgentLintResult | undefined,
   ) => void;
   readonly onLintCompleted: (
     lint: AgentLintResult,
     diff: GitDiffSnapshot,
-    prWillRun: boolean,
-    prSkipReason: string | undefined,
   ) => void;
   readonly onLintStarted: (
     diff: GitDiffSnapshot,
@@ -58,6 +63,8 @@ type RunPipelineOptions = {
   ) => void;
   readonly onPrStarted: (
     diff: GitDiffSnapshot,
+    review: AgentReviewResult | undefined,
+    fix: AgentFixResult | undefined,
     lint: AgentLintResult,
   ) => void;
 };
@@ -67,6 +74,7 @@ export async function runPipeline({
   diffScope,
   mode,
   onFixCompleted,
+  onFixStarted,
   onGitDiffLoaded,
   onLintCompleted,
   onLintStarted,
@@ -83,6 +91,7 @@ export async function runPipeline({
   let agentPr: AgentPrResult | undefined;
   let agentReview: AgentReviewResult | undefined;
   let gitDiff: GitDiffSnapshot | undefined;
+  let prSkipReason: string | undefined;
 
   for (const step of definition.steps) {
     if (step === "git-diff") {
@@ -97,18 +106,30 @@ export async function runPipeline({
       }
 
       agentReview = await runReviewStep(cwd, mode, diffScope, gitDiff);
-      onReviewCompleted(agentReview, gitDiff, shouldRunFix(hasFixStep, agentReview));
+      onReviewCompleted(
+        agentReview,
+        gitDiff,
+        shouldRunFix(hasFixStep, agentReview, agentLint),
+      );
     } else if (step === "fix") {
       if (
         gitDiff === undefined ||
         agentReview === undefined ||
-        !shouldRunFix(hasFixStep, agentReview)
+        !shouldRunFix(hasFixStep, agentReview, agentLint)
       ) {
         continue;
       }
 
-      agentFix = await runFixStep(cwd, mode, diffScope, gitDiff, agentReview);
-      onFixCompleted(agentFix, gitDiff, agentReview);
+      onFixStarted(gitDiff, agentReview, agentLint);
+      agentFix = await runFixStep(
+        cwd,
+        mode,
+        diffScope,
+        gitDiff,
+        agentReview,
+        agentLint,
+      );
+      onFixCompleted(agentFix, gitDiff, agentReview, agentLint);
     } else if (step === "lint") {
       if (gitDiff === undefined || !hasReviewableDiff(gitDiff)) {
         continue;
@@ -118,17 +139,11 @@ export async function runPipeline({
         gitDiff,
         agentReview,
         agentFix,
-        shouldSkipFix(hasFixStep, agentFix),
+        false,
       );
-      agentLint = await runLintStep(
-        cwd,
-        mode,
-        diffScope,
-        gitDiff,
-        agentReview,
-        agentFix,
-        shouldSkipFix(hasFixStep, agentFix),
-      );
+      agentLint = await runLintStep(cwd, mode, diffScope, gitDiff);
+      onLintCompleted(agentLint, gitDiff);
+    } else if (step === "pr") {
       const prDecision = getPrRunDecision(
         hasPrStep,
         agentLint,
@@ -136,22 +151,17 @@ export async function runPipeline({
         agentFix,
       );
 
-      onLintCompleted(
-        agentLint,
-        gitDiff,
-        prDecision.willRun,
-        prDecision.skipReason,
-      );
-    } else if (step === "pr") {
       if (
         gitDiff === undefined ||
         agentLint === undefined ||
-        !shouldRunPr(hasPrStep, agentLint, agentReview, agentFix)
+        !prDecision.willRun
       ) {
+        prSkipReason = prDecision.skipReason;
         continue;
       }
 
-      onPrStarted(gitDiff, agentLint);
+      prSkipReason = undefined;
+      onPrStarted(gitDiff, agentReview, agentFix, agentLint);
       agentPr = await runPrStep(
         cwd,
         mode,
@@ -177,6 +187,7 @@ export async function runPipeline({
     gitDiff,
     lintSkipped: hasLintStep && agentLint === undefined,
     mode,
+    prSkipReason,
     prSkipped: hasPrStep && agentPr === undefined,
     reviewSkipped: agentReview === undefined,
   };
@@ -212,11 +223,13 @@ async function runFixStep(
   diffScope: DiffScopeItem,
   gitDiff: GitDiffSnapshot,
   agentReview: AgentReviewResult,
+  agentLint: AgentLintResult | undefined,
 ): Promise<AgentFixResult> {
   return runFixAgent({
     cwd,
     diff: gitDiff,
     diffScope,
+    lint: agentLint,
     mode,
     review: agentReview,
   });
@@ -227,18 +240,12 @@ async function runLintStep(
   mode: MenuItem,
   diffScope: DiffScopeItem,
   gitDiff: GitDiffSnapshot,
-  agentReview: AgentReviewResult | undefined,
-  agentFix: AgentFixResult | undefined,
-  fixSkipped: boolean,
 ): Promise<AgentLintResult> {
   return runLintAgent({
     cwd,
     diff: gitDiff,
     diffScope,
-    fix: agentFix,
-    fixSkipped,
     mode,
-    review: agentReview,
   });
 }
 
@@ -273,12 +280,17 @@ function hasReviewableDiff(diff: GitDiffSnapshot): boolean {
 function shouldRunFix(
   hasFixStep: boolean,
   review: AgentReviewResult | undefined,
+  lint: AgentLintResult | undefined,
 ): boolean {
-  if (!hasFixStep || review === undefined) {
+  if (!hasFixStep) {
     return false;
   }
 
-  return review.verdicts.verdict !== "pass";
+  const reviewNeedsFix =
+    review !== undefined && review.verdicts.verdict !== "pass";
+  const lintNeedsFix = lint !== undefined && lint.verdicts.verdict !== "pass";
+
+  return reviewNeedsFix || lintNeedsFix;
 }
 
 function shouldSkipFix(
@@ -286,15 +298,6 @@ function shouldSkipFix(
   fix: AgentFixResult | undefined,
 ): boolean {
   return hasFixStep && fix === undefined;
-}
-
-function shouldRunPr(
-  hasPrStep: boolean,
-  lint: AgentLintResult | undefined,
-  review: AgentReviewResult | undefined,
-  fix: AgentFixResult | undefined,
-): boolean {
-  return getPrRunDecision(hasPrStep, lint, review, fix).willRun;
 }
 
 function getPrRunDecision(
@@ -318,20 +321,17 @@ function getPrRunDecision(
   }
 
   const lintVerdict = lint.verdicts.verdict;
-  if (lintVerdict !== "pass") {
-    return {
-      skipReason: `lint verdict is ${lintVerdict}`,
-      willRun: false,
-    };
-  }
-
   const reviewVerdict = review?.verdicts.verdict;
-  if (reviewVerdict !== undefined && reviewVerdict !== "pass") {
+  const needsFix =
+    lintVerdict !== "pass" ||
+    (reviewVerdict !== undefined && reviewVerdict !== "pass");
+
+  if (needsFix) {
     const fixVerdict = fix?.verdicts.verdict;
 
     if (fixVerdict !== "fixed") {
       return {
-        skipReason: `unresolved review findings (review verdict: ${reviewVerdict}, fix verdict: ${fixVerdict ?? "missing"})`,
+        skipReason: `unresolved review or verification findings (review verdict: ${reviewVerdict ?? "missing"}, lint verdict: ${lintVerdict}, fix verdict: ${fixVerdict ?? "missing"})`,
         willRun: false,
       };
     }

@@ -5,6 +5,7 @@ import type { MenuItem } from "../main-menu/menuItems.js";
 import type { AgentReviewResult } from "./reviewAgent.js";
 import { AGENT_MAX_TURNS, createCompletionModel } from "./model.js";
 import { FIX_AGENT_INSTRUCTIONS, toFixPrompt } from "./prompt.js";
+import type { AgentLintResult } from "./lintAgent.js";
 import { PtySessionManager } from "./ptySessionManager.js";
 import { createAgentTools } from "./tools.js";
 import { generateVerdicts, type FixVerdicts } from "./verdicts.js";
@@ -18,6 +19,7 @@ type RunFixAgentOptions = {
   readonly cwd: string;
   readonly diff: GitDiffSnapshot;
   readonly diffScope: DiffScopeItem;
+  readonly lint?: AgentLintResult | undefined;
   readonly mode: MenuItem;
   readonly review: AgentReviewResult;
 };
@@ -26,21 +28,22 @@ export async function runFixAgent({
   cwd,
   diff,
   diffScope,
+  lint,
   mode,
   review,
 }: RunFixAgentOptions): Promise<AgentFixResult> {
   const ptySessions = new PtySessionManager(cwd);
 
   try {
-    const agent = new AgentBuilder("review-pipeline-fixer", createCompletionModel())
-      .name("Review Pipeline Fixer")
+    const agent = new AgentBuilder("review-this-fixer", createCompletionModel())
+      .name("Review This Fixer")
       .instructions(FIX_AGENT_INSTRUCTIONS)
       .tools(createAgentTools(ptySessions))
       .defaultMaxTurns(AGENT_MAX_TURNS)
       .build();
 
     const response = await agent
-      .prompt(toFixPrompt(mode, diffScope, diff, review))
+      .prompt(toFixPrompt(mode, diffScope, diff, review, lint))
       .send();
     const verdicts = await generateVerdicts("fix", response.output);
 

@@ -18,7 +18,7 @@ export function MainMenu({ onChoose }: MainMenuProps) {
     <Box flexDirection="column" width={44} gap={1}>
       <Box flexDirection="column">
         <Text bold wrap="truncate">
-          review-pipeline
+          review-this
         </Text>
         <Text dimColor wrap="truncate">
           Choose a run mode

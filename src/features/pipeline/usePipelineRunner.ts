@@ -27,6 +27,7 @@ export type PipelineRunState =
   | {
       readonly diff: GitDiffSnapshot;
       readonly diffScope: DiffScopeItem;
+      readonly lint?: AgentLintResult;
       readonly mode: MenuItem;
       readonly review: AgentReviewResult;
       readonly status: "fixing";
@@ -97,7 +98,7 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): git diff: ${diff.stats.addedLines} added lines, ${diff.stats.removedLines} removed lines`,
+            `[review-this] ${mode.label} (${diffScope.label}): git diff: ${diff.stats.addedLines} added lines, ${diff.stats.removedLines} removed lines`,
           );
 
           if (reviewWillRun) {
@@ -106,7 +107,7 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): no changes found; review skipped`,
+            `[review-this] ${mode.label} (${diffScope.label}): no changes found; review skipped`,
           );
           setState({
             diff,
@@ -125,21 +126,24 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): fix agent completed (${fix.content.length} chars)`,
+            `[review-this] ${mode.label} (${diffScope.label}): fix agent completed (${fix.content.length} chars)`,
           );
         },
-        onReviewCompleted: (review, diff, fixWillRun) => {
+        onFixStarted: (diff, review, lint) => {
+          if (runIdRef.current !== runId) {
+            return;
+          }
+
+          setState({ diff, diffScope, lint, mode, review, status: "fixing" });
+        },
+        onReviewCompleted: (review) => {
           if (runIdRef.current !== runId) {
             return;
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): agent review completed (${review.content.length} chars)`,
+            `[review-this] ${mode.label} (${diffScope.label}): agent review completed (${review.content.length} chars)`,
           );
-
-          if (fixWillRun) {
-            setState({ diff, diffScope, mode, review, status: "fixing" });
-          }
         },
         onLintStarted: (diff, review, fix, fixSkipped) => {
           if (runIdRef.current !== runId) {
@@ -156,45 +160,30 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
             status: "linting",
           });
         },
-        onLintCompleted: (lint, _diff, prWillRun, prSkipReason) => {
+        onLintCompleted: (lint) => {
           if (runIdRef.current !== runId) {
             return;
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): lint agent completed (${lint.content.length} chars)`,
+            `[review-this] ${mode.label} (${diffScope.label}): lint agent completed (${lint.content.length} chars)`,
           );
-
-          if (!prWillRun) {
-            logInfo(
-              `[rp] ${mode.label} (${diffScope.label}): PR skipped: ${prSkipReason ?? "unknown reason"}`,
-            );
-          }
         },
-        onPrStarted: (diff, lint) => {
+        onPrStarted: (diff, review, fix, lint) => {
           if (runIdRef.current !== runId) {
             return;
           }
 
-          setState((current) => ({
+          setState({
             diff,
             diffScope,
-            fix:
-              current.status === "linting" || current.status === "preparing-pr"
-                ? current.fix
-                : undefined,
-            fixSkipped:
-              current.status === "linting" || current.status === "preparing-pr"
-                ? current.fixSkipped
-                : false,
+            fix,
+            fixSkipped: mode.id !== "review" && fix === undefined,
             lint,
             mode,
-            review:
-              current.status === "linting" || current.status === "preparing-pr"
-                ? current.review
-                : undefined,
+            review,
             status: "preparing-pr",
-          }));
+          });
         },
         onPrCompleted: (pr) => {
           if (runIdRef.current !== runId) {
@@ -202,7 +191,7 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): PR agent completed (${pr.content.length} chars)`,
+            `[review-this] ${mode.label} (${diffScope.label}): PR agent completed (${pr.content.length} chars)`,
           );
         },
       })
@@ -213,6 +202,12 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
 
           if (result.gitDiff === undefined) {
             throw new Error("Git diff step did not produce a result");
+          }
+
+          if (result.prSkipped && result.prSkipReason !== undefined) {
+            logInfo(
+              `[review-this] ${mode.label} (${diffScope.label}): PR skipped: ${result.prSkipReason}`,
+            );
           }
 
           setState({
@@ -238,7 +233,7 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           const message = error instanceof Error ? error.message : String(error);
 
           logWarn(
-            `[rp] ${mode.label} (${diffScope.label}): pipeline failed: ${message}`,
+            `[review-this] ${mode.label} (${diffScope.label}): pipeline failed: ${message}`,
           );
           setState({ diffScope, error: message, mode, status: "failed" });
         });

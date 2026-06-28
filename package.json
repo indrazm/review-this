@@ -1,11 +1,11 @@
 {
-  "name": "review-pipeline",
+  "name": "review-this",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.9.0",
   "type": "module",
   "bin": {
-    "rp": "./dist/cli.js"
+    "review-this": "./dist/cli.js"
   },
   "scripts": {
     "dev": "pnpm build && node dist/cli.js",

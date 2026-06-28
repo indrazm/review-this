@@ -164,7 +164,7 @@ function getShellInvocation(command: string): { args: string[]; file: string } {
 
   return {
     args: ["-c", command],
-    file: process.env.RP_SHELL ?? "/bin/sh",
+    file: process.env.REVIEW_THIS_SHELL ?? process.env.RP_SHELL ?? "/bin/sh",
   };
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-COMMAND_NAME="${COMMAND_NAME:-rp}"
+COMMAND_NAME="${COMMAND_NAME:-review-this}"
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 TARGET="$ROOT_DIR/dist/cli.js"
 

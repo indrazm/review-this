@@ -5,7 +5,6 @@ export function assertInteractiveTerminal(): void {
     return;
   }
 
-  console.error("rp must be run in an interactive terminal.");
+  console.error("review-this must be run in an interactive terminal.");
   process.exit(1);
 }
-

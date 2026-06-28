@@ -22,7 +22,7 @@ export function FullscreenFrame({
   if (width < 12 || height < 5) {
     return (
       <Box width={width} height={height} overflow="hidden">
-        <Text wrap="truncate">rp</Text>
+        <Text wrap="truncate">review-this</Text>
       </Box>
     );
   }

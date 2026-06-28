@@ -36,8 +36,8 @@ export async function runPrAgent({
   const ptySessions = new PtySessionManager(cwd);
 
   try {
-    const agent = new AgentBuilder("review-pipeline-pr", createCompletionModel())
-      .name("Review Pipeline PR Agent")
+    const agent = new AgentBuilder("review-this-pr", createCompletionModel())
+      .name("Review This PR Agent")
       .instructions(PR_AGENT_INSTRUCTIONS)
       .tools(createAgentTools(ptySessions))
       .defaultMaxTurns(AGENT_MAX_TURNS)
