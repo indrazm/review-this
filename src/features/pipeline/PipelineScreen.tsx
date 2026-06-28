@@ -2,8 +2,6 @@ import { useEffect } from "react";
 import { Box, Text } from "ink";
 import { BrailleSpinner } from "../../components/BrailleSpinner.js";
 import type { MenuItem } from "../main-menu/menuItems.js";
-import { DiffPreview } from "./DiffPreview.js";
-import { ReviewOutput } from "./ReviewOutput.js";
 import { usePipelineRunner } from "./usePipelineRunner.js";
 
 type PipelineScreenProps = {
@@ -30,8 +28,6 @@ export function PipelineScreen({ cwd, mode }: PipelineScreenProps) {
       </Box>
 
       <PipelineSteps state={state} />
-      <PipelineDiff state={state} />
-      <PipelineReview state={state} />
       <PipelineCompletion state={state} />
     </Box>
   );
@@ -83,30 +79,6 @@ function StepLine({ isActive, isDone, label }: StepLineProps) {
       {isDone ? "✓" : "·"} {label}
     </Text>
   );
-}
-
-type PipelineDiffProps = {
-  readonly state: ReturnType<typeof usePipelineRunner>["state"];
-};
-
-function PipelineDiff({ state }: PipelineDiffProps) {
-  if (state.status !== "reviewing" && state.status !== "completed") {
-    return null;
-  }
-
-  return <DiffPreview maxLines={9} patch={state.diff.patch} />;
-}
-
-type PipelineReviewProps = {
-  readonly state: ReturnType<typeof usePipelineRunner>["state"];
-};
-
-function PipelineReview({ state }: PipelineReviewProps) {
-  if (state.status !== "completed") {
-    return null;
-  }
-
-  return <ReviewOutput output={state.review?.output ?? ""} />;
 }
 
 type PipelineCompletionProps = {

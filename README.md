@@ -3,8 +3,7 @@
 `review-pipeline` is a local terminal UI for running review workflows from the
 current project directory. The CLI is installed as `rp`.
 
-The app is built with pnpm, TypeScript, React, Ink, ink-markdown-es, Anvia, and
-node-pty.
+The app is built with pnpm, TypeScript, React, Ink, Anvia, and node-pty.
 
 ## Current Behavior
 
@@ -22,9 +21,7 @@ Selecting a mode opens a pipeline screen. The current pipeline implementation:
 3. Passes the git diff to the review agent.
 4. Shows a `Reviewing ...` state while the agent runs.
 5. Gives the agent two PTY tools: `execCommand` and `writeStdin`.
-6. Displays a preview of the diff.
-7. Displays the review output.
-8. Marks the run as `Completed.`
+6. Marks the run as `Completed.`
 
 The diff line-count summary and agent completion summary are logged after the
 terminal UI exits.
