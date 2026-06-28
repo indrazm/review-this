@@ -125,7 +125,7 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): fix agent completed (${fix.output.length} chars)`,
+            `[rp] ${mode.label} (${diffScope.label}): fix agent completed (${fix.content.length} chars)`,
           );
         },
         onReviewCompleted: (review, diff, fixWillRun) => {
@@ -134,7 +134,7 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): agent review completed (${review.output.length} chars)`,
+            `[rp] ${mode.label} (${diffScope.label}): agent review completed (${review.content.length} chars)`,
           );
 
           if (fixWillRun) {
@@ -156,14 +156,20 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
             status: "linting",
           });
         },
-        onLintCompleted: (lint) => {
+        onLintCompleted: (lint, _diff, prWillRun, prSkipReason) => {
           if (runIdRef.current !== runId) {
             return;
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): lint agent completed (${lint.output.length} chars)`,
+            `[rp] ${mode.label} (${diffScope.label}): lint agent completed (${lint.content.length} chars)`,
           );
+
+          if (!prWillRun) {
+            logInfo(
+              `[rp] ${mode.label} (${diffScope.label}): PR skipped: ${prSkipReason ?? "unknown reason"}`,
+            );
+          }
         },
         onPrStarted: (diff, lint) => {
           if (runIdRef.current !== runId) {
@@ -196,7 +202,7 @@ export function usePipelineRunner(cwd: string): PipelineRunner {
           }
 
           logInfo(
-            `[rp] ${mode.label} (${diffScope.label}): PR agent completed (${pr.output.length} chars)`,
+            `[rp] ${mode.label} (${diffScope.label}): PR agent completed (${pr.content.length} chars)`,
           );
         },
       })

@@ -196,7 +196,7 @@ function PipelineReviewOutput({ state }: PipelineReviewOutputProps) {
     return null;
   }
 
-  const output = state.review.output.trim();
+  const output = state.review.content.trim();
 
   return (
     <Box flexDirection="column" flexShrink={1} overflow="hidden" width="100%">

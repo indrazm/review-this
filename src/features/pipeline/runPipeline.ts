@@ -43,6 +43,7 @@ type RunPipelineOptions = {
     lint: AgentLintResult,
     diff: GitDiffSnapshot,
     prWillRun: boolean,
+    prSkipReason: string | undefined,
   ) => void;
   readonly onLintStarted: (
     diff: GitDiffSnapshot,
@@ -128,10 +129,18 @@ export async function runPipeline({
         agentFix,
         shouldSkipFix(hasFixStep, agentFix),
       );
+      const prDecision = getPrRunDecision(
+        hasPrStep,
+        agentLint,
+        agentReview,
+        agentFix,
+      );
+
       onLintCompleted(
         agentLint,
         gitDiff,
-        shouldRunPr(hasPrStep, agentLint, agentReview, agentFix),
+        prDecision.willRun,
+        prDecision.skipReason,
       );
     } else if (step === "pr") {
       if (
@@ -269,7 +278,7 @@ function shouldRunFix(
     return false;
   }
 
-  return getReviewVerdict(review) !== "pass";
+  return review.verdicts.verdict !== "pass";
 }
 
 function shouldSkipFix(
@@ -285,57 +294,48 @@ function shouldRunPr(
   review: AgentReviewResult | undefined,
   fix: AgentFixResult | undefined,
 ): boolean {
-  if (!hasPrStep || lint === undefined || !hasResolvedReviewFindings(review, fix)) {
-    return false;
-  }
-
-  return /(^|\n)\s*VERDICT:\s*pass\s*($|\n)/i.test(lint.output);
+  return getPrRunDecision(hasPrStep, lint, review, fix).willRun;
 }
 
-function hasResolvedReviewFindings(
+function getPrRunDecision(
+  hasPrStep: boolean,
+  lint: AgentLintResult | undefined,
   review: AgentReviewResult | undefined,
   fix: AgentFixResult | undefined,
-): boolean {
-  if (review === undefined || getReviewVerdict(review) === "pass") {
-    return true;
+): { readonly skipReason?: string; readonly willRun: boolean } {
+  if (!hasPrStep) {
+    return {
+      skipReason: "pipeline mode does not include a PR step",
+      willRun: false,
+    };
   }
 
-  return getFixVerdict(fix) === "fixed";
-}
+  if (lint === undefined) {
+    return {
+      skipReason: "lint agent did not produce a result",
+      willRun: false,
+    };
+  }
 
-function getReviewVerdict(
-  review: AgentReviewResult,
-): "pass" | "needs changes" | undefined {
-  const verdictsSection = getMarkdownSection(review.output, "Verdicts");
-  const verdictMatch = verdictsSection.match(
-    /(^|\n)\s*-?\s*\*\*Verdict:\*\*\s*(pass|needs changes)\s*($|\n)/i,
-  );
+  const lintVerdict = lint.verdicts.verdict;
+  if (lintVerdict !== "pass") {
+    return {
+      skipReason: `lint verdict is ${lintVerdict}`,
+      willRun: false,
+    };
+  }
 
-  return verdictMatch?.[2]?.toLowerCase() as
-    | "pass"
-    | "needs changes"
-    | undefined;
-}
+  const reviewVerdict = review?.verdicts.verdict;
+  if (reviewVerdict !== undefined && reviewVerdict !== "pass") {
+    const fixVerdict = fix?.verdicts.verdict;
 
-function getFixVerdict(
-  fix: AgentFixResult | undefined,
-): "fixed" | "not-fixed" | "no-op" | undefined {
-  const verdictMatch = fix?.output.match(
-    /(^|\n)\s*FIX_VERDICT:\s*(fixed|not-fixed|no-op)\s*($|\n)/i,
-  );
+    if (fixVerdict !== "fixed") {
+      return {
+        skipReason: `unresolved review findings (review verdict: ${reviewVerdict}, fix verdict: ${fixVerdict ?? "missing"})`,
+        willRun: false,
+      };
+    }
+  }
 
-  return verdictMatch?.[2]?.toLowerCase() as
-    | "fixed"
-    | "not-fixed"
-    | "no-op"
-    | undefined;
-}
-
-function getMarkdownSection(markdown: string, heading: string): string {
-  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = markdown.match(
-    new RegExp(`(^|\\n)##\\s+${escapedHeading}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "i"),
-  );
-
-  return match?.[2] ?? "";
+  return { willRun: true };
 }

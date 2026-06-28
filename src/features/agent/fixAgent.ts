@@ -7,9 +7,11 @@ import { AGENT_MAX_TURNS, createCompletionModel } from "./model.js";
 import { FIX_AGENT_INSTRUCTIONS, toFixPrompt } from "./prompt.js";
 import { PtySessionManager } from "./ptySessionManager.js";
 import { createAgentTools } from "./tools.js";
+import { generateVerdicts, type FixVerdicts } from "./verdicts.js";
 
 export type AgentFixResult = {
-  readonly output: string;
+  readonly content: string;
+  readonly verdicts: FixVerdicts;
 };
 
 type RunFixAgentOptions = {
@@ -40,9 +42,11 @@ export async function runFixAgent({
     const response = await agent
       .prompt(toFixPrompt(mode, diffScope, diff, review))
       .send();
+    const verdicts = await generateVerdicts("fix", response.output);
 
     return {
-      output: response.output,
+      content: response.output,
+      verdicts,
     };
   } finally {
     ptySessions.dispose();

@@ -11,7 +11,7 @@ import { PtySessionManager } from "./ptySessionManager.js";
 import { createAgentTools } from "./tools.js";
 
 export type AgentPrResult = {
-  readonly output: string;
+  readonly content: string;
 };
 
 type RunPrAgentOptions = {
@@ -48,7 +48,7 @@ export async function runPrAgent({
       .send();
 
     return {
-      output: response.output,
+      content: response.output,
     };
   } finally {
     ptySessions.dispose();
