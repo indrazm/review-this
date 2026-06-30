@@ -355,9 +355,9 @@ function PipelineQualityLoopOutput({ state }: PipelineQualityLoopOutputProps) {
 function PipelineReviewOutput({ state }: PipelineReviewOutputProps) {
   if (
     state.status !== "completed" ||
-    state.mode.id !== "review" ||
     state.reviewSkipped ||
-    state.review === undefined
+    state.review === undefined ||
+    !shouldShowCompletedAgentOutput(state)
   ) {
     return null;
   }
@@ -383,9 +383,9 @@ function PipelineReviewOutput({ state }: PipelineReviewOutputProps) {
 function PipelineVerificationOutput({ state }: PipelineVerificationOutputProps) {
   if (
     state.status !== "completed" ||
-    state.mode.id !== "review" ||
     state.verificationSkipped ||
-    state.verification === undefined
+    state.verification === undefined ||
+    !shouldShowCompletedAgentOutput(state)
   ) {
     return null;
   }
@@ -409,6 +409,23 @@ function PipelineVerificationOutput({ state }: PipelineVerificationOutputProps) 
       )}
     </Box>
   );
+}
+
+function shouldShowCompletedAgentOutput(
+  state: Extract<PipelineRunState, { readonly status: "completed" }>,
+): boolean {
+  if (state.mode.id === "review") {
+    return true;
+  }
+
+  if (state.mode.id !== "review-and-fix" && state.mode.id !== "full-pipeline") {
+    return false;
+  }
+
+  const reviewPassed = state.review?.verdicts.verdict === "pass";
+  const verificationPassed = state.verification?.verdicts.verdict === "pass";
+
+  return !reviewPassed || !verificationPassed || state.prSkipped;
 }
 
 type PipelinePrMonitorOutputProps = {

@@ -56,39 +56,44 @@ export function getPrRunDecision(
     };
   }
 
+  const blockers: string[] = [];
+  let verifiedResult: AgentVerificationResult | undefined;
+
   if (review === undefined) {
-    return {
-      skipReason: "review agent did not produce a result",
-      willRun: false,
-    };
-  }
+    blockers.push("review agent did not produce a result");
+  } else {
+    const reviewVerdict = review.verdicts.verdict;
 
-  const reviewVerdict = review.verdicts.verdict;
-
-  if (reviewVerdict !== "pass") {
-    return {
-      skipReason: `latest review did not pass (review verdict: ${reviewVerdict})`,
-      willRun: false,
-    };
+    if (reviewVerdict !== "pass") {
+      blockers.push(
+        `latest review did not pass (review verdict: ${reviewVerdict})`,
+      );
+    }
   }
 
   if (verification === undefined) {
+    blockers.push("verification agent did not produce a result");
+  } else {
+    const verificationVerdict = verification.verdicts.verdict;
+
+    if (verificationVerdict !== "pass") {
+      blockers.push(
+        `latest verification failed (verification verdict: ${verificationVerdict})`,
+      );
+    } else {
+      verifiedResult = verification;
+    }
+  }
+
+  if (blockers.length > 0) {
     return {
-      skipReason: "verification agent did not produce a result",
+      skipReason: blockers.join("; "),
+      verification: verifiedResult,
       willRun: false,
     };
   }
 
-  const verificationVerdict = verification.verdicts.verdict;
-
-  if (verificationVerdict !== "pass") {
-    return {
-      skipReason: `latest verification failed (review verdict: ${reviewVerdict}, verification verdict: ${verificationVerdict})`,
-      willRun: false,
-    };
-  }
-
-  return { verification, willRun: true };
+  return { verification: verifiedResult, willRun: true };
 }
 
 export function formatNoChangesMessage(

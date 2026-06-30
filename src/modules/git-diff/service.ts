@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { DiffScopeItem } from "../diff-scope/index.js";
 import type {
+  GitDiffComparison,
   GitDiffOptions,
   GitDiffSnapshot,
   GitDiffStats,
@@ -13,9 +14,12 @@ import {
 } from "./utils.js";
 
 const execFileAsync = promisify(execFile);
+const VERIFICATION_ARTIFACTS_PATHSPEC = ":(exclude).review-this/verification/**";
 
 type GitDiffTarget = {
   readonly baseRef?: string;
+  readonly comparison: GitDiffComparison;
+  readonly diffRef?: string;
   readonly hasHead: boolean;
   readonly scope: DiffScopeItem["id"];
 };
@@ -33,7 +37,7 @@ export async function getGitDiffSummary(
   scope: DiffScopeItem,
   options: GitDiffOptions = {},
 ): Promise<GitDiffSummary> {
-  const target = await getGitDiffTarget(cwd, scope);
+  const target = await getGitDiffTarget(cwd, scope, options.comparison);
   const paths = normalizeDiffPaths(options.paths);
 
   if (paths !== undefined && paths.length === 0) {
@@ -58,7 +62,7 @@ export async function getGitDiff(
   scope: DiffScopeItem,
   options: GitDiffOptions = {},
 ): Promise<GitDiffSnapshot> {
-  const target = await getGitDiffTarget(cwd, scope);
+  const target = await getGitDiffTarget(cwd, scope, options.comparison);
   const paths = normalizeDiffPaths(options.paths);
 
   if (paths !== undefined && paths.length === 0) {
@@ -122,6 +126,7 @@ async function assertGitWorkTree(cwd: string): Promise<void> {
 async function getGitDiffTarget(
   cwd: string,
   scope: DiffScopeItem,
+  comparison: GitDiffComparison = "default",
 ): Promise<GitDiffTarget> {
   await assertGitWorkTree(cwd);
 
@@ -132,14 +137,24 @@ async function getGitDiffTarget(
       throw new Error("Current branch against main requires a git HEAD commit");
     }
 
+    const baseRef = await resolveMainRef(cwd);
+    const diffRef =
+      comparison === "worktree-candidate"
+        ? await getMergeBase(cwd, baseRef, "HEAD")
+        : undefined;
+
     return {
-      baseRef: await resolveMainRef(cwd),
+      baseRef,
+      comparison,
+      diffRef,
       hasHead,
       scope: scope.id,
     };
   }
 
   return {
+    comparison,
+    diffRef: comparison === "worktree-candidate" && hasHead ? "HEAD" : undefined,
     hasHead,
     scope: scope.id,
   };
@@ -173,16 +188,33 @@ async function hasGitRef(cwd: string, ref: string): Promise<boolean> {
   }
 }
 
+async function getMergeBase(
+  cwd: string,
+  leftRef: string,
+  rightRef: string,
+): Promise<string> {
+  const { stdout } = await runGit(cwd, ["merge-base", leftRef, rightRef]);
+
+  return stdout.trim();
+}
+
 async function getExtraNumstat(
   cwd: string,
   target: GitDiffTarget,
   paths: readonly string[] | undefined,
 ): Promise<string> {
-  if (target.scope !== "current-changes") {
+  if (
+    target.scope !== "current-changes" &&
+    target.comparison !== "worktree-candidate"
+  ) {
     return "";
   }
 
-  return getUntrackedNumstat(cwd, paths);
+  return getUntrackedNumstat(
+    cwd,
+    paths,
+    shouldExcludeVerificationArtifacts(target),
+  );
 }
 
 async function getExtraPatch(
@@ -190,11 +222,18 @@ async function getExtraPatch(
   target: GitDiffTarget,
   paths: readonly string[] | undefined,
 ): Promise<string> {
-  if (target.scope !== "current-changes") {
+  if (
+    target.scope !== "current-changes" &&
+    target.comparison !== "worktree-candidate"
+  ) {
     return "";
   }
 
-  return getUntrackedPatch(cwd, paths);
+  return getUntrackedPatch(
+    cwd,
+    paths,
+    shouldExcludeVerificationArtifacts(target),
+  );
 }
 
 async function getCommitCount(
@@ -221,23 +260,30 @@ async function getCommitCount(
 async function getUntrackedNumstat(
   cwd: string,
   paths: readonly string[] | undefined,
+  excludeVerificationArtifacts: boolean,
 ): Promise<string> {
-  return getUntrackedDiff(cwd, "--numstat", paths);
+  return getUntrackedDiff(cwd, "--numstat", paths, excludeVerificationArtifacts);
 }
 
 async function getUntrackedPatch(
   cwd: string,
   paths: readonly string[] | undefined,
+  excludeVerificationArtifacts: boolean,
 ): Promise<string> {
-  return getUntrackedDiff(cwd, undefined, paths);
+  return getUntrackedDiff(cwd, undefined, paths, excludeVerificationArtifacts);
 }
 
 async function getUntrackedDiff(
   cwd: string,
   format?: "--numstat",
   paths?: readonly string[] | undefined,
+  excludeVerificationArtifacts = false,
 ): Promise<string> {
-  const untrackedPaths = await getUntrackedPaths(cwd, paths);
+  const untrackedPaths = await getUntrackedPaths(
+    cwd,
+    paths,
+    excludeVerificationArtifacts,
+  );
   const outputs = await Promise.all(
     untrackedPaths.map((path) => runNoIndexDiff(cwd, path, format)),
   );
@@ -248,6 +294,7 @@ async function getUntrackedDiff(
 async function getUntrackedPaths(
   cwd: string,
   paths: readonly string[] | undefined,
+  excludeVerificationArtifacts: boolean,
 ): Promise<string[]> {
   const { stdout } = await runGit(cwd, [
     "ls-files",
@@ -255,7 +302,7 @@ async function getUntrackedPaths(
     "--exclude-standard",
     "-z",
     "--",
-    ...toGitPathspecs(paths),
+    ...toGitPathspecs(paths, excludeVerificationArtifacts),
   ]);
 
   return stdout.split("\0").filter((path) => path.length > 0);
@@ -266,7 +313,22 @@ function buildGitDiffArgs(
   format?: "--numstat",
   paths?: readonly string[] | undefined,
 ): readonly string[] {
-  const pathspecs = toGitPathspecs(paths);
+  const pathspecs = toGitPathspecs(
+    paths,
+    shouldExcludeVerificationArtifacts(target),
+  );
+
+  if (target.comparison === "worktree-candidate") {
+    if (target.diffRef === undefined) {
+      return format === undefined
+        ? ["diff", "--", ...pathspecs]
+        : ["diff", format, "--", ...pathspecs];
+    }
+
+    return format === undefined
+      ? ["diff", target.diffRef, "--", ...pathspecs]
+      : ["diff", format, target.diffRef, "--", ...pathspecs];
+  }
 
   if (target.scope === "branch-against-main") {
     if (target.baseRef === undefined) {
@@ -360,6 +422,17 @@ function normalizeDiffPaths(
   );
 }
 
-function toGitPathspecs(paths: readonly string[] | undefined): readonly string[] {
-  return paths === undefined ? ["."] : paths;
+function shouldExcludeVerificationArtifacts(target: GitDiffTarget): boolean {
+  return target.comparison === "worktree-candidate";
+}
+
+function toGitPathspecs(
+  paths: readonly string[] | undefined,
+  excludeVerificationArtifacts = false,
+): readonly string[] {
+  const pathspecs = paths === undefined ? ["."] : [...paths];
+
+  return excludeVerificationArtifacts
+    ? [...pathspecs, VERIFICATION_ARTIFACTS_PATHSPEC]
+    : pathspecs;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -83,6 +83,83 @@ test("branch against main summary includes commit count", async () => {
   }
 });
 
+test("branch default diff remains committed-only when worktree has local fixes", async () => {
+  const cwd = await createRepo();
+
+  try {
+    await git(cwd, ["checkout", "-b", "feature"]);
+    await writeFile(join(cwd, "a.txt"), "one\nbranch\n");
+    await git(cwd, ["add", "a.txt"]);
+    await git(cwd, ["commit", "-m", "feature change"]);
+    await writeFile(join(cwd, "a.txt"), "one\nbranch\nlocal fix\n");
+
+    const diff = await getGitDiff(cwd, diffScope("branch-against-main"));
+
+    assert.match(diff.patch, /branch/);
+    assert.doesNotMatch(diff.patch, /local fix/);
+  } finally {
+    await removeRepo(cwd);
+  }
+});
+
+test("worktree candidate branch diff includes uncommitted tracked and untracked files", async () => {
+  const cwd = await createRepo();
+
+  try {
+    await git(cwd, ["checkout", "-b", "feature"]);
+    await writeFile(join(cwd, "a.txt"), "one\nbranch\n");
+    await git(cwd, ["add", "a.txt"]);
+    await git(cwd, ["commit", "-m", "feature change"]);
+    await writeFile(join(cwd, "a.txt"), "one\nbranch\nlocal fix\n");
+    await writeFile(join(cwd, "c.txt"), "new candidate file\n");
+
+    const diff = await getGitDiff(cwd, diffScope("branch-against-main"), {
+      comparison: "worktree-candidate",
+    });
+
+    assert.deepEqual(
+      diff.stats.changedFiles,
+      2,
+    );
+    assert.match(diff.patch, /local fix/);
+    assert.match(diff.patch, /c\.txt/);
+    assert.match(diff.patch, /new candidate file/);
+  } finally {
+    await removeRepo(cwd);
+  }
+});
+
+test("worktree candidate diff excludes review-this verification artifacts", async () => {
+  const cwd = await createRepo();
+
+  try {
+    await git(cwd, ["checkout", "-b", "feature"]);
+    await writeFile(join(cwd, "a.txt"), "one\nbranch\n");
+    await git(cwd, ["add", "a.txt"]);
+    await git(cwd, ["commit", "-m", "feature change"]);
+    await mkdir(join(cwd, ".review-this", "verification"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(cwd, ".review-this", "verification", "artifact.log"),
+      "generated artifact\n",
+    );
+
+    const diff = await getGitDiff(cwd, diffScope("branch-against-main"), {
+      comparison: "worktree-candidate",
+    });
+
+    assert.deepEqual(
+      diff.stats.changedFiles,
+      1,
+    );
+    assert.doesNotMatch(diff.patch, /artifact\.log/);
+    assert.doesNotMatch(diff.patch, /generated artifact/);
+  } finally {
+    await removeRepo(cwd);
+  }
+});
+
 function diffScope(id: DiffScopeId) {
   const scope = DIFF_SCOPE_ITEMS.find((item) => item.id === id);
 
@@ -117,4 +194,3 @@ async function removeRepo(cwd: string): Promise<void> {
 async function git(cwd: string, args: readonly string[]): Promise<void> {
   await execFileAsync("git", ["-C", cwd, ...args]);
 }
-

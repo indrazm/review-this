@@ -5,6 +5,12 @@ import type {
   AgentPrRepairResult,
   AgentPrResult,
   AgentReviewResult,
+  RunFixAgentOptions,
+  RunPrAgentOptions,
+  RunPrMonitorAgentOptions,
+  RunPrRepairAgentOptions,
+  RunReviewAgentOptions,
+  RunVerificationAgentOptions,
 } from "../agent/types.js";
 import type { DiffScopeItem } from "../diff-scope/index.js";
 import type { GitDiffSnapshot } from "../git-diff/index.js";
@@ -54,7 +60,25 @@ export type PipelineRunResult = {
   readonly reviewSkipped: boolean;
 };
 
+export type PipelineAgentRunners = {
+  readonly runFixAgent?: (options: RunFixAgentOptions) => Promise<AgentFixResult>;
+  readonly runPrAgent?: (options: RunPrAgentOptions) => Promise<AgentPrResult>;
+  readonly runPrMonitorAgent?: (
+    options: RunPrMonitorAgentOptions,
+  ) => Promise<AgentPrMonitorResult>;
+  readonly runPrRepairAgent?: (
+    options: RunPrRepairAgentOptions,
+  ) => Promise<AgentPrRepairResult>;
+  readonly runReviewAgent?: (
+    options: RunReviewAgentOptions,
+  ) => Promise<AgentReviewResult>;
+  readonly runVerificationAgent?: (
+    options: RunVerificationAgentOptions,
+  ) => Promise<AgentVerificationResult>;
+};
+
 export type RunPipelineOptions = {
+  readonly agentRunners?: PipelineAgentRunners;
   readonly cwd: string;
   readonly mode: MenuItem;
   readonly reviewTarget: ReviewTarget;

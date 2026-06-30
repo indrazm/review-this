@@ -1,3 +1,5 @@
+export type GitDiffComparison = "default" | "worktree-candidate";
+
 export type GitDiffStats = {
   readonly addedLines: number;
   readonly binaryFiles: number;
@@ -15,6 +17,7 @@ export type GitDiffFileStat = {
 };
 
 export type GitDiffOptions = {
+  readonly comparison?: GitDiffComparison;
   readonly paths?: readonly string[];
 };
 

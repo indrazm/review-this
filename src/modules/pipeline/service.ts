@@ -20,6 +20,7 @@ import { getGitDiff, type GitDiffSnapshot } from "../git-diff/index.js";
 import type { MenuItem } from "../main-menu/index.js";
 import type { ReviewTarget } from "../review-target/index.js";
 import type {
+  PipelineAgentRunners,
   PipelineDefinition,
   PipelineRunResult,
   RunPipelineOptions,
@@ -34,6 +35,17 @@ import {
 
 const MAX_LOCAL_FIX_ATTEMPTS = 2;
 const MAX_PR_REPAIR_ATTEMPTS = 2;
+
+const DEFAULT_AGENT_RUNNERS = {
+  runFixAgent,
+  runPrAgent,
+  runPrMonitorAgent,
+  runPrRepairAgent,
+  runReviewAgent,
+  runVerificationAgent,
+} satisfies Required<PipelineAgentRunners>;
+
+type ResolvedPipelineAgentRunners = typeof DEFAULT_AGENT_RUNNERS;
 
 export const PIPELINE_DEFINITIONS: Record<MenuItem["id"], PipelineDefinition> = {
   review: {
@@ -59,6 +71,7 @@ export const PIPELINE_DEFINITIONS: Record<MenuItem["id"], PipelineDefinition> = 
 };
 
 export async function runPipeline({
+  agentRunners,
   cwd,
   mode,
   onFixCompleted,
@@ -77,6 +90,7 @@ export async function runPipeline({
   onReviewCompleted,
   reviewTarget,
 }: RunPipelineOptions): Promise<PipelineRunResult> {
+  const runners = resolveAgentRunners(agentRunners);
   const diffScope = reviewTarget.scope;
   const definition = PIPELINE_DEFINITIONS[mode.id];
   const hasFixStep = definition.steps.includes("fix");
@@ -113,7 +127,7 @@ export async function runPipeline({
         continue;
       }
 
-      agentReview = await runReviewStep(cwd, mode, diffScope, gitDiff);
+      agentReview = await runReviewStep(runners, cwd, mode, diffScope, gitDiff);
       agentReviewAttempts.push(agentReview);
       onReviewCompleted(
         agentReview,
@@ -144,6 +158,7 @@ export async function runPipeline({
 
         onFixStarted(gitDiff, agentReview, verificationForFix, attempt, maxAttempts);
         agentFix = await runFixStep(
+          runners,
           cwd,
           mode,
           diffScope,
@@ -175,7 +190,7 @@ export async function runPipeline({
           throw new Error("Full pipeline fix loop requires initial verification");
         }
 
-        gitDiff = await getReviewTargetDiff(cwd, reviewTarget);
+        gitDiff = await getPostFixCandidateDiff(cwd, reviewTarget);
         onPostFixVerificationStarted(
           gitDiff,
           agentReview,
@@ -185,6 +200,7 @@ export async function runPipeline({
           maxAttempts,
         );
         agentPostFixVerification = await runVerificationStep(
+          runners,
           cwd,
           mode,
           diffScope,
@@ -202,7 +218,7 @@ export async function runPipeline({
           maxAttempts,
         );
 
-        agentReview = await runReviewStep(cwd, mode, diffScope, gitDiff);
+        agentReview = await runReviewStep(runners, cwd, mode, diffScope, gitDiff);
         agentReviewAttempts.push(agentReview);
         onReviewCompleted(
           agentReview,
@@ -226,6 +242,7 @@ export async function runPipeline({
         false,
       );
       agentInitialVerification = await runVerificationStep(
+        runners,
         cwd,
         mode,
         diffScope,
@@ -248,9 +265,10 @@ export async function runPipeline({
         continue;
       }
 
-      gitDiff = await getReviewTargetDiff(cwd, reviewTarget);
+      gitDiff = await getPostFixCandidateDiff(cwd, reviewTarget);
       onPostFixVerificationStarted(gitDiff, agentReview, agentFix, agentInitialVerification, 1, 1);
       agentPostFixVerification = await runVerificationStep(
+        runners,
         cwd,
         mode,
         diffScope,
@@ -286,6 +304,7 @@ export async function runPipeline({
       prSkipReason = undefined;
       onPrStarted(gitDiff, agentReview, agentFix, prDecision.verification);
       agentPr = await runPrStep(
+        runners,
         cwd,
         mode,
         diffScope,
@@ -322,6 +341,7 @@ export async function runPipeline({
       while (true) {
         onPrMonitorStarted(gitDiff, agentReview, agentFix, agentVerification, agentPr);
         agentPrMonitor = await runPrMonitorStep(
+          runners,
           cwd,
           mode,
           diffScope,
@@ -367,6 +387,7 @@ export async function runPipeline({
           MAX_PR_REPAIR_ATTEMPTS,
         );
         agentPrRepair = await runPrRepairStep(
+          runners,
           cwd,
           mode,
           diffScope,
@@ -445,6 +466,15 @@ async function runGitDiffStep(
   return diff;
 }
 
+function resolveAgentRunners(
+  overrides: PipelineAgentRunners | undefined,
+): ResolvedPipelineAgentRunners {
+  return {
+    ...DEFAULT_AGENT_RUNNERS,
+    ...overrides,
+  };
+}
+
 async function getReviewTargetDiff(
   cwd: string,
   reviewTarget: ReviewTarget,
@@ -454,16 +484,27 @@ async function getReviewTargetDiff(
   });
 }
 
+async function getPostFixCandidateDiff(
+  cwd: string,
+  reviewTarget: ReviewTarget,
+): Promise<GitDiffSnapshot> {
+  return getGitDiff(cwd, reviewTarget.scope, {
+    comparison: "worktree-candidate",
+  });
+}
+
 async function runReviewStep(
+  runners: ResolvedPipelineAgentRunners,
   cwd: string,
   mode: MenuItem,
   diffScope: DiffScopeItem,
   gitDiff: GitDiffSnapshot,
 ): Promise<AgentReviewResult> {
-  return runReviewAgent({ cwd, diff: gitDiff, diffScope, mode });
+  return runners.runReviewAgent({ cwd, diff: gitDiff, diffScope, mode });
 }
 
 async function runFixStep(
+  runners: ResolvedPipelineAgentRunners,
   cwd: string,
   mode: MenuItem,
   diffScope: DiffScopeItem,
@@ -474,7 +515,7 @@ async function runFixStep(
   attempt: number,
   maxAttempts: number,
 ): Promise<AgentFixResult> {
-  return runFixAgent({
+  return runners.runFixAgent({
     attempt,
     cwd,
     diff: gitDiff,
@@ -488,13 +529,14 @@ async function runFixStep(
 }
 
 async function runVerificationStep(
+  runners: ResolvedPipelineAgentRunners,
   cwd: string,
   mode: MenuItem,
   diffScope: DiffScopeItem,
   gitDiff: GitDiffSnapshot,
   phase: VerificationRunPhase,
 ): Promise<AgentVerificationResult> {
-  return runVerificationAgent({
+  return runners.runVerificationAgent({
     cwd,
     diff: gitDiff,
     diffScope,
@@ -504,6 +546,7 @@ async function runVerificationStep(
 }
 
 async function runPrStep(
+  runners: ResolvedPipelineAgentRunners,
   cwd: string,
   mode: MenuItem,
   diffScope: DiffScopeItem,
@@ -512,7 +555,7 @@ async function runPrStep(
   agentFix: AgentFixResult | undefined,
   agentVerification: AgentVerificationResult,
 ): Promise<AgentPrResult> {
-  return runPrAgent({
+  return runners.runPrAgent({
     cwd,
     diff: gitDiff,
     diffScope,
@@ -524,6 +567,7 @@ async function runPrStep(
 }
 
 async function runPrMonitorStep(
+  runners: ResolvedPipelineAgentRunners,
   cwd: string,
   mode: MenuItem,
   diffScope: DiffScopeItem,
@@ -533,7 +577,7 @@ async function runPrMonitorStep(
   agentVerification: AgentVerificationResult,
   agentPr: AgentPrResult & { readonly prUrl: string },
 ): Promise<AgentPrMonitorResult> {
-  return runPrMonitorAgent({
+  return runners.runPrMonitorAgent({
     cwd,
     diff: gitDiff,
     diffScope,
@@ -546,6 +590,7 @@ async function runPrMonitorStep(
 }
 
 async function runPrRepairStep(
+  runners: ResolvedPipelineAgentRunners,
   cwd: string,
   mode: MenuItem,
   diffScope: DiffScopeItem,
@@ -558,7 +603,7 @@ async function runPrRepairStep(
   attempt: number,
   maxAttempts: number,
 ): Promise<AgentPrRepairResult> {
-  return runPrRepairAgent({
+  return runners.runPrRepairAgent({
     attempt,
     cwd,
     diff: gitDiff,
